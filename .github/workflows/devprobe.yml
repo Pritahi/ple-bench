@@ -1,0 +1,11 @@
+name: devprobe
+on: [workflow_dispatch]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          date -u
+          nproc
+          docker version --format '{{.Server.Version}}'
+          df -h / | tail -1
