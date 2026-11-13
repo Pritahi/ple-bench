@@ -1,0 +1,160 @@
+name: devrun
+on:
+  workflow_dispatch:
+    inputs:
+      tasks:
+        description: comma-separated dev task ids
+        default: data-hall-mep-routing
+      run_name:
+        description: run dir name under runs/ (blank = a<run number>)
+        default: ""
+      agent_minutes:
+        description: agent time limit in minutes (competition is 360)
+        default: "310"
+concurrency: devrun
+permissions:
+  contents: read
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      MODEL_PROXY_KEY: ${{ secrets.MODEL_PROXY_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Pritahi/ple-harness
+          path: ple-harness
+      - name: free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/julia* || true
+          docker system prune -af || true
+          df -h / | tail -1
+      - uses: astral-sh/setup-uv@v5
+      - name: install tools
+        run: |
+          uv tool install harbor==0.20.0 --with websockets
+          uv tool install --with "litellm[proxy]" litellm
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: patch agent time limit
+        run: |
+          SECS=$(( ${{ inputs.agent_minutes }} * 60 ))
+          sed -i "s/AGENT_TIMEOUT_SEC = 6 \* 3600/AGENT_TIMEOUT_SEC = $SECS/" kit/spec.py
+          grep -n "AGENT_TIMEOUT_SEC =" kit/spec.py | head -1
+      - name: proxy config and env file
+        run: |
+          cat > config.ci.yaml <<'EOF'
+          model_list:
+            - model_name: gemma-4-26b
+              litellm_params:
+                model: gemini/gemma-4-26b-a4b-it
+                api_key: os.environ/GEMINI_API_KEY
+                num_retries: 0
+            - model_name: gemini-3.8-flash
+              litellm_params:
+                model: gemini/gemini-3.8-flash
+                api_key: os.environ/GEMINI_API_KEY
+                num_retries: 0
+          general_settings:
+            master_key: os.environ/MODEL_PROXY_KEY
+          EOF
+          cat > ci.env <<EOF
+          MODEL_PROXY_URL=http://localhost:4000
+          MODEL_PROXY_KEY=$MODEL_PROXY_KEY
+          HF_TOKEN=$HF_TOKEN
+          EOF
+      - name: start model proxy
+        run: |
+          nohup "$HOME/.local/bin/litellm" --config config.ci.yaml --host 0.0.0.0 --port 4000 > proxy.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -m 2 localhost:4000/health/liveliness && break || sleep 5
+          done
+      - name: run eval
+        id: rn
+        run: |
+          RUN_DIR="runs/${{ inputs.run_name }}"
+          if [ -z "${{ inputs.run_name }}" ]; then RUN_DIR="runs/a${{ github.run_number }}"; fi
+          echo "run_dir=$RUN_DIR" >> "$GITHUB_OUTPUT"
+          uv run python eval/run.py ./ple-harness --env-file ci.env --tasks "${{ inputs.tasks }}" --out "$RUN_DIR" || true
+          tar czf runs.tgz runs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runs-${{ github.run_number }}
+          path: runs.tgz
+          if-no-files-found: ignore
+      - name: proxy log tail
+        if: failure()
+        run: tail -50 proxy.log || true
+  verify:
+    needs: agent
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      MODEL_PROXY_KEY: ${{ secrets.MODEL_PROXY_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/julia* || true
+      - uses: astral-sh/setup-uv@v5
+      - name: install tools
+        run: |
+          uv tool install harbor==0.20.0 --with websockets
+          uv tool install --with "litellm[proxy]" litellm
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - uses: actions/download-artifact@v4
+        with:
+          name: runs-${{ github.run_number }}
+      - name: proxy config and env file
+        run: |
+          tar xzf runs.tgz
+          cat > config.ci.yaml <<'EOF'
+          model_list:
+            - model_name: gemma-4-26b
+              litellm_params:
+                model: gemini/gemma-4-26b-a4b-it
+                api_key: os.environ/GEMINI_API_KEY
+                num_retries: 0
+            - model_name: gemini-3.8-flash
+              litellm_params:
+                model: gemini/gemini-3.8-flash
+                api_key: os.environ/GEMINI_API_KEY
+                num_retries: 0
+          general_settings:
+            master_key: os.environ/MODEL_PROXY_KEY
+          EOF
+          cat > ci.env <<EOF
+          MODEL_PROXY_URL=http://localhost:4000
+          MODEL_PROXY_KEY=$MODEL_PROXY_KEY
+          HF_TOKEN=$HF_TOKEN
+          EOF
+          nohup "$HOME/.local/bin/litellm" --config config.ci.yaml --host 0.0.0.0 --port 4000 > proxy.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -m 2 localhost:4000/health/liveliness && break || sleep 5
+          done
+      - name: regrade
+        run: |
+          RUN_DIR=$(ls -d runs/*/ | head -1)
+          echo "regrading $RUN_DIR"
+          uv run python eval/run.py --regrade "$RUN_DIR" --env-file ci.env || true
+          tar czf runs-verified.tgz runs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runs-verified-${{ github.run_number }}
+          path: runs-verified.tgz
+          if-no-files-found: ignore
+      - name: results
+        if: always()
+        run: |
+          find runs -name "results.json" -o -name "metrics.json" -o -name "reward.txt" | head -10
+          for f in $(find runs -name "results.json" -o -name "metrics.json" -o -name "reward.txt" | head -10); do
+            echo "=== $f ==="; cat "$f"; echo
+          done
