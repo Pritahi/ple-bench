@@ -1,0 +1,22 @@
+name: kitcheck
+on:
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Pritahi/ple-harness
+          path: ple-harness
+      - name: free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/julia* || true
+          docker system prune -af || true
+      - uses: astral-sh/setup-uv@v5
+      - name: kit artifacts check
+        run: uv run python -m kit artifacts ./ple-harness || true
+      - name: kit check
+        run: uv run python -m kit check ./ple-harness
