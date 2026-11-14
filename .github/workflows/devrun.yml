@@ -10,7 +10,7 @@ on:
         default: ""
       agent_minutes:
         description: agent time limit in minutes (competition is 360)
-        default: "310"
+        default: "285"
       model_api:
         description: override submission.yaml model_api (e.g. google-cloud/gemini-3.8-flash)
         default: ""
