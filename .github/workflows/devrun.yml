@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 355
     env:
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_API_KEY: ${{ inputs.key_slot == '2' && secrets.GEMINI_API_KEY_2 || secrets.GEMINI_API_KEY }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       MODEL_PROXY_KEY: ${{ secrets.MODEL_PROXY_KEY }}
     steps:
@@ -114,7 +114,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_API_KEY: ${{ inputs.key_slot == '2' && secrets.GEMINI_API_KEY_2 || secrets.GEMINI_API_KEY }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       MODEL_PROXY_KEY: ${{ secrets.MODEL_PROXY_KEY }}
     steps:
