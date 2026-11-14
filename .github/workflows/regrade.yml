@@ -41,9 +41,9 @@ jobs:
                 model: gemini/gemma-4-26b-a4b-it
                 api_key: os.environ/GEMINI_API_KEY
                 num_retries: 0
-            - model_name: gemma-4-26b-judge
+            - model_name: gemini-3.8-flash-judge
               litellm_params:
-                model: gemini/gemma-4-26b-a4b-it
+                model: gemini/gemini-3.8-flash
                 api_key: os.environ/GEMINI_API_KEY
                 num_retries: 0
           general_settings:
@@ -53,7 +53,7 @@ jobs:
           MODEL_PROXY_URL=http://localhost:4000
           MODEL_PROXY_KEY=$MODEL_PROXY_KEY
           HF_TOKEN=$HF_TOKEN
-          JUDGE_MODEL=gemma-4-26b
+          JUDGE_MODEL=gemini-3.8-flash
           EOF2
           nohup "$HOME/.local/bin/litellm" --config config.ci.yaml --host 0.0.0.0 --port 4000 > proxy.log 2>&1 &
           for i in $(seq 1 60); do
