@@ -11,7 +11,10 @@ on:
       agent_minutes:
         description: agent time limit in minutes (competition is 360)
         default: "310"
-concurrency: devrun
+      model_api:
+        description: override submission.yaml model_api (e.g. google-cloud/gemini-3.8-flash)
+        default: ""
+concurrency: devrun-${{ inputs.model_api || 'default' }}
 permissions:
   contents: read
 jobs:
@@ -33,6 +36,11 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/julia* || true
           docker system prune -af || true
           df -h / | tail -1
+      - name: override model_api
+        if: ${{ inputs.model_api != '' }}
+        run: |
+          sed -i "s|model_api: .*|model_api: ${{ inputs.model_api }}|" ple-harness/submission.yaml
+          grep model_api ple-harness/submission.yaml
       - uses: astral-sh/setup-uv@v5
       - name: install tools
         run: |
@@ -63,6 +71,11 @@ jobs:
                 model: gemini/gemma-4-26b-a4b-it
                 api_key: os.environ/GEMINI_API_KEY
                 num_retries: 0
+            - model_name: gemini-3.8-flash-judge
+              litellm_params:
+                model: gemini/gemini-3.8-flash
+                api_key: os.environ/GEMINI_API_KEY
+                num_retries: 0
           general_settings:
             master_key: os.environ/MODEL_PROXY_KEY
           EOF
@@ -70,7 +83,7 @@ jobs:
           MODEL_PROXY_URL=http://localhost:4000
           MODEL_PROXY_KEY=$MODEL_PROXY_KEY
           HF_TOKEN=$HF_TOKEN
-          JUDGE_MODEL=gemma-4-26b
+          JUDGE_MODEL=${{ inputs.model_api == 'google-cloud/gemini-3.8-flash' && 'gemini-3.8-flash' || 'gemma-4-26b' }}
           EOF
       - name: start model proxy
         run: |
@@ -138,6 +151,11 @@ jobs:
                 model: gemini/gemma-4-26b-a4b-it
                 api_key: os.environ/GEMINI_API_KEY
                 num_retries: 0
+            - model_name: gemini-3.8-flash-judge
+              litellm_params:
+                model: gemini/gemini-3.8-flash
+                api_key: os.environ/GEMINI_API_KEY
+                num_retries: 0
           general_settings:
             master_key: os.environ/MODEL_PROXY_KEY
           EOF
@@ -145,7 +163,7 @@ jobs:
           MODEL_PROXY_URL=http://localhost:4000
           MODEL_PROXY_KEY=$MODEL_PROXY_KEY
           HF_TOKEN=$HF_TOKEN
-          JUDGE_MODEL=gemma-4-26b
+          JUDGE_MODEL=${{ inputs.model_api == 'google-cloud/gemini-3.8-flash' && 'gemini-3.8-flash' || 'gemma-4-26b' }}
           EOF
           nohup "$HOME/.local/bin/litellm" --config config.ci.yaml --host 0.0.0.0 --port 4000 > proxy.log 2>&1 &
           for i in $(seq 1 60); do
