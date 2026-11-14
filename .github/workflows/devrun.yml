@@ -14,6 +14,9 @@ on:
       model_api:
         description: override submission.yaml model_api (e.g. google-cloud/gemini-3.8-flash)
         default: ""
+      key_slot:
+        description: which GEMINI_API_KEY secret slot to use (1 or 2)
+        default: "1"
 concurrency: devrun-${{ inputs.model_api || 'default' }}
 permissions:
   contents: read
