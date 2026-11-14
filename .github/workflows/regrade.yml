@@ -1,0 +1,79 @@
+name: regrade
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_id:
+        description: artifact id holding runs.tgz to regrade
+        required: true
+jobs:
+  regrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      MODEL_PROXY_KEY: ${{ secrets.MODEL_PROXY_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /usr/local/julia* || true
+      - uses: astral-sh/setup-uv@v5
+      - name: install tools
+        run: |
+          uv tool install harbor==0.20.0 --with websockets
+          uv tool install --with "litellm[proxy]" litellm
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: fetch runs artifact
+        run: |
+          gh api repos/${{ github.repository }}/actions/artifacts/${{ inputs.artifact_id }}/zip > a.zip
+          unzip -q a.zip
+          tar xzf runs.tgz
+          ls runs/
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: proxy and env
+        run: |
+          cat > config.ci.yaml <<'YAML'
+          model_list:
+            - model_name: gemma-4-26b
+              litellm_params:
+                model: gemini/gemma-4-26b-a4b-it
+                api_key: os.environ/GEMINI_API_KEY
+                num_retries: 0
+            - model_name: gemma-4-26b-judge
+              litellm_params:
+                model: gemini/gemma-4-26b-a4b-it
+                api_key: os.environ/GEMINI_API_KEY
+                num_retries: 0
+          general_settings:
+            master_key: os.environ/MODEL_PROXY_KEY
+          YAML
+          cat > ci.env <<EOF2
+          MODEL_PROXY_URL=http://localhost:4000
+          MODEL_PROXY_KEY=$MODEL_PROXY_KEY
+          HF_TOKEN=$HF_TOKEN
+          JUDGE_MODEL=gemma-4-26b
+          EOF2
+          nohup "$HOME/.local/bin/litellm" --config config.ci.yaml --host 0.0.0.0 --port 4000 > proxy.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -m 2 localhost:4000/health/liveliness && break || sleep 5
+          done
+      - name: regrade
+        run: |
+          RUN_DIR=$(ls -d runs/*/ | head -1)
+          echo "regrading $RUN_DIR"
+          uv run python eval/run.py --regrade "$RUN_DIR" --env-file ci.env || true
+          tar czf runs-regraded.tgz runs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runs-regraded-${{ inputs.artifact_id }}
+          path: runs-regraded.tgz
+          if-no-files-found: ignore
+      - name: results
+        if: always()
+        run: |
+          for f in $(find runs -name "results.json" | head -5); do
+            echo "=== $f ==="; cat "$f"; echo
+          done
