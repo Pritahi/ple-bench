@@ -17,7 +17,7 @@ on:
       key_slot:
         description: which GEMINI_API_KEY secret slot to use (1 or 2)
         default: "1"
-concurrency: devrun-${{ inputs.model_api || 'default' }}
+concurrency: devrun-${{ inputs.model_api || 'default' }}-ks${{ inputs.key_slot }}
 permissions:
   contents: read
 jobs:
