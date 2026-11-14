@@ -43,7 +43,12 @@ jobs:
         if: ${{ inputs.model_api != '' }}
         run: |
           sed -i "s|model_api: .*|model_api: ${{ inputs.model_api }}|" ple-harness/submission.yaml
-          grep model_api ple-harness/submission.yaml
+      - name: tune env for flash free tier
+        if: ${{ inputs.model_api == 'google-cloud/gemini-3.8-flash' }}
+        run: |
+          cd ple-harness
+          sed -i 's|MODEL_TPM: .*|MODEL_TPM: "200000"|; s|CALL_GAP_SEC: .*|CALL_GAP_SEC: "6"|; s|COMPACT_AT_TOKENS: .*|COMPACT_AT_TOKENS: "60000"|' submission.yaml
+          cat submission.yaml
       - uses: astral-sh/setup-uv@v5
       - name: install tools
         run: |
@@ -86,7 +91,7 @@ jobs:
           MODEL_PROXY_URL=http://localhost:4000
           MODEL_PROXY_KEY=$MODEL_PROXY_KEY
           HF_TOKEN=$HF_TOKEN
-          JUDGE_MODEL=${{ inputs.model_api == 'google-cloud/gemini-3.8-flash' && 'gemini-3.8-flash' || 'gemma-4-26b' }}
+          JUDGE_MODEL=gemma-4-26b
           EOF
       - name: start model proxy
         run: |
@@ -166,7 +171,7 @@ jobs:
           MODEL_PROXY_URL=http://localhost:4000
           MODEL_PROXY_KEY=$MODEL_PROXY_KEY
           HF_TOKEN=$HF_TOKEN
-          JUDGE_MODEL=${{ inputs.model_api == 'google-cloud/gemini-3.8-flash' && 'gemini-3.8-flash' || 'gemma-4-26b' }}
+          JUDGE_MODEL=gemma-4-26b
           EOF
           nohup "$HOME/.local/bin/litellm" --config config.ci.yaml --host 0.0.0.0 --port 4000 > proxy.log 2>&1 &
           for i in $(seq 1 60); do
