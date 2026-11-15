@@ -31,7 +31,7 @@ jobs:
               litellm_params:
                 model: gemini/gemma-4-26b-a4b-it
                 api_key: os.environ/GEMINI_API_KEY
-                num_retries: 0
+                num_retries: 3
           general_settings:
             master_key: os.environ/MODEL_PROXY_KEY
           YAML
