@@ -1,0 +1,25 @@
+name: modelprobe
+on:
+  workflow_dispatch:
+    inputs:
+      key_slot:
+        description: which GEMINI_API_KEY secret slot to use (1 or 2)
+        required: true
+        default: "1"
+permissions: {}
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: list models the key can call
+        env:
+          GEMINI_API_KEY: ${{ inputs.key_slot == '2' && secrets.GEMINI_API_KEY_2 || secrets.GEMINI_API_KEY }}
+        run: |
+          curl -sf "https://generativelanguage.googleapis.com/v1beta/models?pageSize=100&key=$GEMINI_API_KEY" \
+            | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          for m in d.get('models', []):
+              if 'generateContent' in (m.get('supportedGenerationMethods') or []):
+                  print(m['name'], m.get('inputTokenLimit'), m.get('outputTokenLimit'))
+          "
