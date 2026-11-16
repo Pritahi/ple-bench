@@ -1,0 +1,33 @@
+name: callprobe
+on:
+  workflow_dispatch:
+    inputs:
+      key_slot:
+        description: which GEMINI_API_KEY secret slot to use (1 or 2)
+        required: true
+        default: "1"
+      models:
+        description: comma-separated model ids to test with one tiny call each
+        required: true
+        default: gemma-4-31b-it
+permissions: {}
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: one tiny generateContent call per model
+        env:
+          GEMINI_API_KEY: ${{ inputs.key_slot == '2' && secrets.GEMINI_API_KEY_2 || secrets.GEMINI_API_KEY }}
+          MODELS: ${{ inputs.models }}
+        run: |
+          for M in ${MODELS//,/ }; do
+            OUT=$(curl -s -m 60 -w '\nHTTP:%{http_code}' \
+              "https://generativelanguage.googleapis.com/v1beta/models/$M:generateContent?key=$GEMINI_API_KEY" \
+              -H 'Content-Type: application/json' \
+              -d '{"contents":[{"parts":[{"text":"Say OK"}]}],"generationConfig":{"maxOutputTokens":8}}')
+            CODE=$(echo "$OUT" | grep -o 'HTTP:[0-9]*')
+            echo "== $M $CODE"
+            echo "$OUT" | head -c 400
+            echo
+            sleep 2
+          done
