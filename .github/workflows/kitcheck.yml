@@ -32,6 +32,15 @@ jobs:
                 model: gemini/gemma-4-26b-a4b-it
                 api_key: os.environ/GEMINI_API_KEY
                 num_retries: 3
+            # The submission declares claude-opus-5-5 for Stage 2, where Google
+            # serves it; no free key can. This alias lets the kit's connectivity
+            # probe exercise the harness/proxy path end-to-end in CI. It is a CI
+            # stand-in, not the declared Stage 2 model.
+            - model_name: claude-opus-5-5
+              litellm_params:
+                model: gemini/gemma-4-26b-a4b-it
+                api_key: os.environ/GEMINI_API_KEY
+                num_retries: 3
           general_settings:
             master_key: os.environ/MODEL_PROXY_KEY
           YAML
