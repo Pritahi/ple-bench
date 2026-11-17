@@ -17,7 +17,11 @@ on:
       key_slot:
         description: which GEMINI_API_KEY secret slot to use (1 or 2)
         default: "1"
-concurrency: devrun-${{ inputs.model_api || 'default' }}-ks${{ inputs.key_slot }}
+      driver_model:
+        description: litellm model id actually driving the agent (e.g. gemini/gemini-3.1-flash-lite); submission.yaml keeps its sponsored declaration
+        required: false
+        default: ""
+concurrency: devrun-${{ inputs.model_api || 'default' }}-${{ inputs.driver_model || 'nodef' }}-ks${{ inputs.key_slot }}
 permissions:
   contents: read
 jobs:
@@ -50,7 +54,7 @@ jobs:
           sed -i 's|MODEL_TPM: .*|MODEL_TPM: "200000"|; s|CALL_GAP_SEC: .*|CALL_GAP_SEC: "6"|; s|COMPACT_AT_TOKENS: .*|COMPACT_AT_TOKENS: "60000"|' submission.yaml
           cat submission.yaml
       - name: tune env for flash-lite free tier
-        if: ${{ inputs.model_api == 'google-cloud/gemini-3.1-flash-lite' }}
+        if: ${{ inputs.driver_model == 'gemini/gemini-3.1-flash-lite' }}
         run: |
           cd ple-harness
           sed -i 's|MODEL_TPM: .*|MODEL_TPM: "200000"|; s|CALL_GAP_SEC: .*|CALL_GAP_SEC: "2"|; s|COMPACT_AT_TOKENS: .*|COMPACT_AT_TOKENS: "120000"|' submission.yaml
@@ -109,6 +113,14 @@ jobs:
           HF_TOKEN=$HF_TOKEN
           JUDGE_MODEL=gemma-4-26b
           EOF
+      - name: retarget declared alias at the driver model
+        if: ${{ inputs.driver_model != '' }}
+        run: |
+          ALIAS="${{ inputs.model_api }}"
+          ALIAS="${ALIAS:-google-cloud/gemma-4-26b}"
+          ALIAS="${ALIAS#google-cloud/}"
+          sed -i "/model_name: $ALIAS$/,/model: /s|model: .*|model: ${{ inputs.driver_model }}|" config.ci.yaml
+          grep -A2 "model_name: $ALIAS$" config.ci.yaml
       - name: start model proxy
         run: |
           nohup "$HOME/.local/bin/litellm" --config config.ci.yaml --host 0.0.0.0 --port 4000 > proxy.log 2>&1 &
